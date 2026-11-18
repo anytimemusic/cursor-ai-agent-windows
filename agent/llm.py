@@ -39,6 +39,31 @@ def _make_headers(api_key: str) -> dict[str, str]:
     return headers
 
 
+def format_connection_error(root: str, exc: BaseException) -> str:
+    """Format network/connection errors into concise, provider-aware user messages."""
+    reason = getattr(exc, "reason", exc)
+    text = str(reason)
+    low = text.lower()
+    is_refused = (
+        isinstance(reason, ConnectionRefusedError)
+        or "10061" in low
+        or "connection refused" in low
+        or "actively refused" in low
+    )
+    if is_refused:
+        if "20128" in root:
+            return (
+                "9router belum aktif di localhost:20128. "
+                "Jalankan 9router dulu, atau ganti Provider (OpenRouter / Gemini / OpenAI)."
+            )
+        if "11434" in root:
+            return "Ollama belum aktif di localhost:11434. Jalankan Ollama, atau ganti Provider lain."
+        return f"Koneksi ke {root} ditolak. Pastikan server endpoint aktif."
+    if isinstance(exc, TimeoutError) or "timed out" in low:
+        return f"Timeout saat menghubungi {root}."
+    return text
+
+
 def list_models(base_url: str, api_key: str = "", timeout: float = 5.0) -> dict[str, Any]:
     root = normalize_base_url(base_url)
     url = f"{root}/models"
@@ -56,10 +81,12 @@ def list_models(base_url: str, api_key: str = "", timeout: float = 5.0) -> dict[
                 ids.append(item)
         return {"ok": True, "models": ids, "base_url": root, "error": ""}
     except urllib.error.HTTPError as e:
-        body = e.read().decode("utf-8", errors="replace")[:300]
+        body = e.read().decode("utf-8", errors="replace")[:200]
+        if e.code in (401, 403):
+            return {"ok": False, "models": [], "base_url": root, "error": f"API Key ditolak (HTTP {e.code}). Cek API Key Anda."}
         return {"ok": False, "models": [], "base_url": root, "error": f"HTTP {e.code}: {body}"}
     except Exception as e:
-        return {"ok": False, "models": [], "base_url": root, "error": str(e)}
+        return {"ok": False, "models": [], "base_url": root, "error": format_connection_error(root, e)}
 
 
 def pick_default_model(models: list[str]) -> str:
@@ -279,9 +306,13 @@ def chat_completion(
             err_body = e.read().decode("utf-8", errors="replace")
             low = err_body.lower()
             if e.code == 401:
+                if "20128" in root:
+                    raise RuntimeError(
+                        "API Key ditolak (HTTP 401). Ambil/buat API Key di dashboard 9router (http://localhost:20128), "
+                        "lalu masukkan ke Settings (⚙) Kursor AI."
+                    ) from e
                 raise RuntimeError(
-                    "API Key ditolak (HTTP 401). Ambil/buat API Key di dashboard 9router (http://localhost:20128), "
-                    "lalu masukkan ke Settings (⚙) Kursor AI."
+                    "API Key ditolak (HTTP 401). Periksa Provider & API Key Anda di Settings (⚙) Kursor AI."
                 ) from e
             if e.code in (502, 503, 504, 529):
                 raise LLMTransientError(f"LLM API error HTTP {e.code}: {err_body[:240]}") from e
@@ -303,9 +334,7 @@ def chat_completion(
             is_timeout = isinstance(e, TimeoutError) or "timed out" in str(reason).lower()
             if is_timeout:
                 raise LLMTransientError(f"Model '{model}' di {root} timeout setelah {int(timeout)}s.") from e
-            raise RuntimeError(
-                f"Gagal terhubung ke {root} ({reason}). Pastikan 9router / endpoint aktif."
-            ) from e
+            raise RuntimeError(format_connection_error(root, e)) from e
 
     choices = data.get("choices") or []
     if not choices:

@@ -222,16 +222,20 @@ class AgentRunner:
             return model
         res = list_models(base_url, api_key, timeout=5.0)
         if not res["ok"]:
-            raise RuntimeError(
-                f"Tidak bisa konek ke {res['base_url']}: {res['error']}. "
-                "Pastikan 9router sudah jalan (misal `npx 9router`) atau cek Settings."
+            hint = (
+                "Pastikan 9router sudah jalan (misal `npx 9router`) atau ganti Provider di Settings (⚙)."
+                if "20128" in str(res["base_url"])
+                else "Periksa koneksi internet, Base URL, API Key, atau model di Settings (⚙)."
             )
+            raise RuntimeError(f"Tidak bisa konek ke {res['base_url']}: {res['error']}. {hint}")
         picked = pick_default_model(res["models"])
         if not picked:
-            raise RuntimeError(
-                f"Terhubung ke {res['base_url']}, tapi daftar model kosong. "
+            empty_hint = (
                 "Tambahkan/aktifkan minimal 1 model atau provider di dashboard 9router."
+                if "20128" in str(res["base_url"])
+                else "Isi nama model secara manual di Settings (⚙) atau periksa API Key."
             )
+            raise RuntimeError(f"Terhubung ke {res['base_url']}, tapi daftar model kosong. {empty_hint}")
         self.emit({"type": "model_auto_selected", "model": picked, "models": res["models"]})
         return picked
 

@@ -67,6 +67,27 @@ winget install -e --id UB-Mannheim.TesseractOCR
 
 ---
 
+## Cara Update (Untuk yang Sudah Download)
+
+### Jika sudah ada file `update.bat`
+Double-click **`update.bat`** — script akan otomatis menghentikan instance yang sedang berjalan, mengambil update terbaru dari GitHub (baik lewat `git pull` maupun download ZIP otomatis), memperbarui paket Python bila perlu, lalu menjaga `.venv` dan API Key Anda tetap aman.
+
+### Jika Anda download sebelum ada `update.bat`
+- **Jika dulu install lewat `git clone`:**
+  ```powershell
+  cd cursor-ai-agent-windows
+  .\.venv\Scripts\python.exe cli.py quit
+  git pull origin main
+  ```
+- **Jika dulu install lewat Download ZIP (tanpa Git):**
+  1. Download ulang ZIP terbaru dari GitHub (**Code → Download ZIP**), ekstrak dan timpa folder `cursor-ai-agent-windows` lama Anda (atau cukup jalankan perintah PowerShell ini di dalam folder `cursor-ai-agent-windows`):
+     ```powershell
+     powershell -NoProfile -Command "$z=\"$env:TEMP\ka.zip\"; $e=\"$env:TEMP\ka_ext\"; Invoke-WebRequest 'https://github.com/anytimemusic/cursor-ai-agent-windows/archive/refs/heads/main.zip' -OutFile $z; Expand-Archive $z $e -Force; $s=\"$e\cursor-ai-agent-windows-main\"; Get-ChildItem $s -Recurse -File -Force | ForEach-Object { $r=$_.FullName.Substring($s.Length).TrimStart('\','/'); $t=Join-Path (Get-Location) $r; $d=Split-Path $t -Parent; if(!(Test-Path $d)){New-Item -ItemType Directory $d -Force|Out-Null}; Copy-Item $_.FullName $t -Force }; Remove-Item $z,$e -Recurse -Force"
+     ```
+  2. Konfigurasi API Key di `%APPDATA%\cursor-ai-agent\config.json` dan folder `.venv` tidak akan terhapus. Setelah itu jalankan `start.bat` (dan untuk update berikutnya cukup double-click `update.bat`).
+
+---
+
 ## Cara Menjalankan & Penggunaan Dasar
 
 1. Jalankan lewat shortcut **Kursor AI Agent** di Desktop/Start Menu, atau double-click **`start.bat`**.
@@ -79,10 +100,10 @@ winget install -e --id UB-Mannheim.TesseractOCR
      start.bat --tray
      ```
 2. Arahkan kursor mouse ke kapsul **`Type here...`** di dekat AI kursor (atau tekan **`Ctrl+Alt+Space`**) untuk membuka prompt bar.
-3. Sebelum perintah pertama, klik ikon **`⚙` (Settings)** di prompt bar untuk memilih provider AI & memasukkan API Key:
-   - **OpenRouter**: Pilih `openrouter`, isi API Key `sk-or-...`, dan pilih model vision (mis. `google/gemini-2.5-flash` atau `anthropic/claude-sonnet-4`).
-   - **Gemini**: Pilih `gemini`, isi Gemini API Key Anda, dan pilih model (mis. `gemini-2.5-flash`).
-   - **9router (Local)**: Pastikan 9router berjalan di `http://localhost:20128/v1`.
+3. Sebelum perintah pertama, klik ikon **`⚙` (Settings)** di prompt bar untuk memilih provider AI, mengisi API Key, lalu klik **`Cek Model`** dan **`Simpan & Apply`**:
+   - **OpenRouter**: Pilih `openrouter`, isi API Key `sk-or-...`, klik **`Cek Model`** untuk memilih model vision (mis. `google/gemini-2.5-flash` atau `anthropic/claude-sonnet-4`), lalu klik **`Simpan & Apply`**.
+   - **Gemini**: Pilih `gemini`, isi Gemini API Key Anda, pilih/biarkan model auto (mis. `gemini-2.5-flash`), lalu klik **`Simpan & Apply`**.
+   - **9router (Local)**: Pastikan 9router berjalan di `http://localhost:20128/v1`. Jika muncul status merah *9router belum aktif / WinError 10061*, jalankan 9router terlebih dahulu atau ganti Provider ke Gemini / OpenRouter / OpenAI.
    - **Ollama (Local)**: Pastikan Ollama berjalan di `http://localhost:11434/v1` dengan model multimodal (mis. `qwen2.5vl`).
    - File konfigurasi disimpan lokal di `%APPDATA%\cursor-ai-agent\config.json` (tidak pernah ikut ter-upload ke GitHub).
 4. Ketik instruksi Anda lalu tekan **Enter** atau klik **`Run ▶`**.
@@ -151,6 +172,7 @@ cursor-ai-agent-windows/
 ├── run.py                  # Entrypoint utama Windows 11 (--tray / --headless / single-instance)
 ├── cli.py                  # CLI TCP client untuk status, ask, toggle, summon, pause, halt
 ├── install.bat             # Installer otomatis Python + .venv + Tesseract + Shortcut
+├── update.bat              # Updater 1-klik untuk pengguna Git maupun Download ZIP
 ├── start.bat               # Launcher background tanpa jendela konsol (pythonw)
 ├── cursor-ai.bat           # Wrapper CLI untuk cmd/PowerShell
 ├── requirements.txt        # Dependensi Python Windows 11

@@ -439,6 +439,8 @@ class CursorPillWindow(QWidget):
         hdr.addWidget(lbl_t, 1)
         btn_back = QPushButton("←", self.settings_widget)
         btn_back.setFixedSize(24, 24)
+        btn_back.setToolTip("Kembali tanpa menyimpan")
+        btn_back.setCursor(Qt.CursorShape.PointingHandCursor)
         btn_back.clicked.connect(self._close_settings)
         hdr.addWidget(btn_back)
         s_outer.addLayout(hdr)
@@ -452,6 +454,10 @@ class CursorPillWindow(QWidget):
         form.setContentsMargins(0, 0, 4, 0)
         form.setSpacing(5)
 
+        self._draft_keys: dict[str, str] = {}
+        self._current_provider_edit = "9router"
+        self._show_api_key = False
+
         form.addWidget(self._small_lbl("Provider"))
         self.cmb_provider = QComboBox(form_wrap)
         self.cmb_provider.addItems(["9router", "openrouter", "openai", "ollama", "gemini"])
@@ -463,24 +469,33 @@ class CursorPillWindow(QWidget):
         form.addWidget(self.inp_base_url)
 
         form.addWidget(self._small_lbl("API Key"))
+        key_row = QHBoxLayout()
+        key_row.setSpacing(4)
         self.inp_api_key = QLineEdit(form_wrap)
+        self.inp_api_key.setPlaceholderText("Masukkan API Key...")
         self.inp_api_key.setEchoMode(QLineEdit.EchoMode.Password)
-        form.addWidget(self.inp_api_key)
+        key_row.addWidget(self.inp_api_key, 1)
+        self.btn_toggle_key = QPushButton("Lihat", form_wrap)
+        self.btn_toggle_key.setFixedHeight(24)
+        self.btn_toggle_key.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.btn_toggle_key.clicked.connect(self._toggle_api_key_visibility)
+        key_row.addWidget(self.btn_toggle_key)
+        form.addLayout(key_row)
 
         m_row = QHBoxLayout()
         m_row.addWidget(self._small_lbl("Model (kosongkan = auto)"), 1)
-        btn_ref = QPushButton("↻", form_wrap)
-        btn_ref.setFixedSize(22, 20)
-        btn_ref.clicked.connect(lambda: self._state.bridge.handle_command({
-            "cmd": "check_models",
-            "base_url": self.inp_base_url.text().strip(),
-            "api_key": self.inp_api_key.text(),
-        }))
+        btn_ref = QPushButton("Cek Model", form_wrap)
+        btn_ref.setFixedHeight(21)
+        btn_ref.setToolTip("Cek koneksi & muat daftar model")
+        btn_ref.setCursor(Qt.CursorShape.PointingHandCursor)
+        btn_ref.clicked.connect(self._trigger_model_check)
         m_row.addWidget(btn_ref)
         form.addLayout(m_row)
 
         self.cmb_model = QComboBox(form_wrap)
         self.cmb_model.setEditable(True)
+        if self.cmb_model.lineEdit() is not None:
+            self.cmb_model.lineEdit().setPlaceholderText("Auto (atau ketik / pilih model)")
         form.addWidget(self.cmb_model)
 
         self.lbl_models_info = QLabel("Cek model...", form_wrap)
@@ -512,14 +527,26 @@ class CursorPillWindow(QWidget):
         self.btn_tog_trail.clicked.connect(self._toggle_trail)
         form.addWidget(self.btn_tog_trail)
 
-        btn_save = QPushButton("Simpan", form_wrap)
-        btn_save.setFixedHeight(28)
-        btn_save.setObjectName("btnSave")
-        btn_save.clicked.connect(self._save_settings)
-        form.addWidget(btn_save)
-
         scroll.setWidget(form_wrap)
         s_outer.addWidget(scroll, 1)
+
+        footer = QHBoxLayout()
+        footer.setContentsMargins(0, 2, 0, 0)
+        footer.setSpacing(6)
+        btn_cancel = QPushButton("Batal", self.settings_widget)
+        btn_cancel.setFixedHeight(28)
+        btn_cancel.setCursor(Qt.CursorShape.PointingHandCursor)
+        btn_cancel.clicked.connect(self._close_settings)
+        footer.addWidget(btn_cancel, 1)
+
+        btn_save = QPushButton("Simpan & Apply", self.settings_widget)
+        btn_save.setFixedHeight(28)
+        btn_save.setObjectName("btnSave")
+        btn_save.setCursor(Qt.CursorShape.PointingHandCursor)
+        btn_save.clicked.connect(self._save_settings)
+        footer.addWidget(btn_save, 2)
+        s_outer.addLayout(footer)
+
         self.card_layout.addWidget(self.settings_widget)
 
         self.apply_styles()
@@ -561,14 +588,52 @@ class CursorPillWindow(QWidget):
         self.prompt_input.clear()
         self._state.send_prompt(txt)
 
+    def _toggle_api_key_visibility(self) -> None:
+        self._show_api_key = not self._show_api_key
+        self.inp_api_key.setEchoMode(QLineEdit.EchoMode.Normal if self._show_api_key else QLineEdit.EchoMode.Password)
+        self.btn_toggle_key.setText("Tutup" if self._show_api_key else "Lihat")
+
+    def _trigger_model_check(self) -> None:
+        self.lbl_models_info.setText("Mengecek koneksi & daftar model...")
+        self.lbl_models_info.setStyleSheet("color: #94a3b8; font-size: 10px;")
+        self._state.bridge.handle_command({
+            "cmd": "check_models",
+            "base_url": self.inp_base_url.text().strip(),
+            "api_key": self.inp_api_key.text().strip(),
+        })
+
     def _on_provider_changed(self, prov: str) -> None:
+        old_prov = self._current_provider_edit
+        if old_prov:
+            self._draft_keys[old_prov] = self.inp_api_key.text()
+        self._current_provider_edit = prov
+
         presets = self._state.presets or {}
         p = presets.get(prov)
+        dk = str(p.get("default_key") or "") if p else ""
         if p:
             self.inp_base_url.setText(str(p.get("base_url") or ""))
-            dk = str(p.get("default_key") or "")
-            if dk or not self.inp_api_key.text().strip():
-                self.inp_api_key.setText(dk)
+
+        if prov in self._draft_keys:
+            new_key = self._draft_keys[prov]
+        else:
+            cur_key = self.inp_api_key.text().strip()
+            new_key = dk if (dk or cur_key in ("", "9router", "ollama")) else ""
+        self.inp_api_key.setText(new_key)
+
+        saved_prov = str(self._state.config.get("provider") or "")
+        saved_model = str(self._state.config.get("model") or "") if prov == saved_prov else ""
+        self.cmb_model.blockSignals(True)
+        self.cmb_model.clear()
+        self.cmb_model.addItem("")
+        self.cmb_model.setCurrentText(saved_model)
+        self.cmb_model.blockSignals(False)
+
+        if new_key.strip() or prov in ("9router", "ollama"):
+            self._trigger_model_check()
+        else:
+            self.lbl_models_info.setText("Isi API Key lalu klik 'Cek Model' atau langsung 'Simpan & Apply'.")
+            self.lbl_models_info.setStyleSheet("color: #94a3b8; font-size: 10px;")
 
     def _pick_accent(self, col_hex: str) -> None:
         self._selected_accent = col_hex
@@ -585,11 +650,21 @@ class CursorPillWindow(QWidget):
     def _open_settings(self) -> None:
         cfg = self._state.config
         prov = str(cfg.get("provider") or "9router")
+        cur_key = str(cfg.get("api_key") or "")
+        self._current_provider_edit = prov
+        self._draft_keys = {prov: cur_key}
+        self._show_api_key = False
+        self.inp_api_key.setEchoMode(QLineEdit.EchoMode.Password)
+        self.btn_toggle_key.setText("Lihat")
+
+        self.cmb_provider.blockSignals(True)
         idx = self.cmb_provider.findText(prov)
         if idx >= 0:
             self.cmb_provider.setCurrentIndex(idx)
+        self.cmb_provider.blockSignals(False)
+
         self.inp_base_url.setText(str(cfg.get("base_url") or ""))
-        self.inp_api_key.setText(str(cfg.get("api_key") or ""))
+        self.inp_api_key.setText(cur_key)
         self.cmb_model.setCurrentText(str(cfg.get("model") or ""))
         self._selected_accent = str(cfg.get("cursor_accent") or "#38bdf8")
         self._restore_val = bool(cfg.get("restore_cursor", True))
@@ -597,19 +672,26 @@ class CursorPillWindow(QWidget):
         self.btn_tog_restore.setText(f"Kembalikan mouse asli: {'ON' if self._restore_val else 'OFF'}")
         self.btn_tog_trail.setText(f"Jejak kursor (trail): {'ON' if self._trail_val else 'OFF'}")
         self._state.settings_tab = True
+        self._state.wants_keyboard = True
         self.sync_mode()
+        self._state._reposition_pill()
+        self.activateWindow()
+        if not cur_key.strip():
+            self.inp_api_key.setFocus()
 
     def _close_settings(self) -> None:
         self._state.settings_tab = False
         self.sync_mode()
+        self._state._reposition_pill()
 
     def _save_settings(self) -> None:
+        self._state.last_error = ""
         self._state.bridge.handle_command({
             "cmd": "save_config",
             "config": {
                 "provider": self.cmb_provider.currentText().strip(),
                 "base_url": self.inp_base_url.text().strip(),
-                "api_key": self.inp_api_key.text(),
+                "api_key": self.inp_api_key.text().strip(),
                 "model": self.cmb_model.currentText().strip(),
                 "cursor_accent": self._selected_accent,
                 "restore_cursor": self._restore_val,
@@ -618,6 +700,7 @@ class CursorPillWindow(QWidget):
         })
         self._state.settings_tab = False
         self.sync_mode()
+        self._state._reposition_pill()
 
     def update_models_status(self, ev: dict[str, Any]) -> None:
         if ev.get("ok"):
@@ -664,7 +747,9 @@ class CursorPillWindow(QWidget):
         self.lbl_status.setText(self._state.cursor_label or "Type here...")
 
         if st:
-            self.setFixedSize(348, 390)
+            cw = self._state._find_canvas_for_phys(self._state.render_x, self._state.render_y)
+            max_h = max(320, cw._screen.geometry().height() - 80) if cw else 430
+            self.setFixedSize(364, min(430, max_h))
         elif exp:
             h = 122 if self._state.last_error else 82
             self.setFixedSize(304, h)
@@ -685,7 +770,7 @@ class CursorPillWindow(QWidget):
                 clickthrough=self._state.input_shield,
                 no_activate=not (exp and self._state.wants_keyboard),
             )
-            if exp and self._state.wants_keyboard:
+            if exp and (not st) and self._state.wants_keyboard:
                 self.activateWindow()
                 self.prompt_input.setFocus()
         else:
@@ -695,9 +780,10 @@ class CursorPillWindow(QWidget):
     def enterEvent(self, event) -> None:
         self._hover_collapse_timer.stop()
         if not self._state.cursor_dismissed and not self._state.is_busy and not self._dragging and not self._state.input_shield:
-            self._state.hover_open = True
-            self._state.wants_keyboard = True
-            self.sync_mode()
+            if not self._state.settings_tab:
+                self._state.hover_open = True
+                self._state.wants_keyboard = True
+                self.sync_mode()
         super().enterEvent(event)
 
     def leaveEvent(self, event) -> None:
@@ -919,13 +1005,14 @@ class OverlayCoordinator(QObject):
         self.settings_tab = False
         self.wants_keyboard = False
         self.pill.sync_mode()
+        self._reposition_pill()
 
     def open_hud(self) -> None:
         self.cursor_dismissed = False
         self.hud_open = True
         self.wants_keyboard = True
-        self._reposition_pill()
         self.pill.sync_mode()
+        self._reposition_pill()
         self._repaint_canvases()
 
     def send_prompt(self, prompt: str) -> None:
@@ -936,6 +1023,7 @@ class OverlayCoordinator(QObject):
         self.settings_tab = False
         self.wants_keyboard = False
         self.pill.sync_mode()
+        self._reposition_pill()
         self.bridge.handle_command({"cmd": "ask", "prompt": prompt, "attach_screen": True})
 
     def snap_cursor(self, gx: float, gy: float) -> None:
@@ -964,10 +1052,12 @@ class OverlayCoordinator(QObject):
         pw = self.pill.width()
         ph = self.pill.height()
 
-        flip_left = lx > (geo.width() - 200)
-        flip_up = ly > (geo.height() - 140)
-        px_local = max(12.0, min(geo.width() - pw - 12.0, (lx - pw - 14.0) if flip_left else (lx + 18.0)))
-        py_local = max(16.0, min(geo.height() - ph - 60.0, (ly - ph - 14.0) if flip_up else (ly + 18.0)))
+        flip_left = lx > (geo.width() - max(200, pw + 28))
+        flip_up = ly > (geo.height() - max(140, ph + 64))
+        max_x = max(12.0, geo.width() - pw - 12.0)
+        max_y = max(12.0, geo.height() - ph - 52.0)
+        px_local = max(12.0, min(max_x, (lx - pw - 14.0) if flip_left else (lx + 18.0)))
+        py_local = max(12.0, min(max_y, (ly - ph - 14.0) if flip_up else (ly + 18.0)))
         self.pill.move(round(geo.x() + px_local), round(geo.y() + py_local))
 
     def _repaint_canvases(self) -> None:
@@ -992,11 +1082,13 @@ class OverlayCoordinator(QObject):
                 self.snap_cursor(float(ev["cursor"]["x"]), float(ev["cursor"]["y"]))
             self.tray.setIcon(_make_tray_icon(self.accent_color))
             self.pill.sync_mode()
+            self._reposition_pill()
         elif t == "config_updated":
             if ev.get("config"):
                 self.config = dict(ev["config"])
                 self.tray.setIcon(_make_tray_icon(self.accent_color))
                 self.pill.sync_mode()
+                self._reposition_pill()
         elif t == "models_status":
             self.pill.update_models_status(ev)
         elif t == "model_auto_selected":

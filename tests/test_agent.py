@@ -505,5 +505,53 @@ class TestBridgeTcpRoundtrip(unittest.TestCase):
                     self.assertFalse(port_file.exists())
 
 
+class TestSettingsAndConnectionErrors(unittest.TestCase):
+    def test_list_models_friendly_winerror_10061(self) -> None:
+        import urllib.error
+
+        err = urllib.error.URLError(
+            "[WinError 10061] No connection could be made because the target machine actively refused it"
+        )
+        with mock.patch.object(llm_mod.urllib.request, "urlopen", side_effect=err):
+            res_9r = llm_mod.list_models("http://localhost:20128/v1", "9router")
+            self.assertFalse(res_9r["ok"])
+            self.assertIn("9router belum aktif", res_9r["error"])
+            self.assertNotIn("WinError 10061", res_9r["error"])
+
+            res_ol = llm_mod.list_models("http://localhost:11434/v1", "ollama")
+            self.assertFalse(res_ol["ok"])
+            self.assertIn("Ollama belum aktif", res_ol["error"])
+
+    def test_chat_completion_401_provider_aware(self) -> None:
+        import io
+        import urllib.error
+
+        http_err = urllib.error.HTTPError(
+            "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions",
+            401,
+            "Unauthorized",
+            {},
+            io.BytesIO(b"invalid key"),
+        )
+        with mock.patch.object(llm_mod.urllib.request, "urlopen", side_effect=http_err):
+            with self.assertRaises(RuntimeError) as ctx:
+                llm_mod.chat_completion(
+                    "https://generativelanguage.googleapis.com/v1beta/openai",
+                    "bad-key",
+                    "gemini-2.5-flash",
+                    [{"role": "user", "content": "hi"}],
+                )
+            self.assertIn("Settings", str(ctx.exception))
+            self.assertNotIn("9router", str(ctx.exception))
+
+    def test_overlay_settings_pinned_footer_and_focus_guard(self) -> None:
+        src = (ROOT / "ui" / "overlay.py").read_text(encoding="utf-8")
+        self.assertIn("Simpan & Apply", src)
+        self.assertIn("s_outer.addLayout(footer)", src)
+        self.assertIn("btn_toggle_key", src)
+        self.assertIn("if exp and (not st) and self._state.wants_keyboard:", src)
+        self.assertTrue((ROOT / "update.bat").exists())
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
