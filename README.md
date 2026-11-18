@@ -80,9 +80,10 @@ Double-click **`update.bat`** — script akan otomatis menghentikan instance yan
   git pull origin main
   ```
 - **Jika dulu install lewat Download ZIP (tanpa Git):**
-  1. Download ulang ZIP terbaru dari GitHub (**Code → Download ZIP**), ekstrak dan timpa folder `cursor-ai-agent-windows` lama Anda (atau cukup jalankan perintah PowerShell ini di dalam folder `cursor-ai-agent-windows`):
+  1. Buka **PowerShell** di dalam folder `cursor-ai-agent-windows`, lalu jalankan perintah ini (atau download ulang ZIP dari GitHub dan timpa folder lama Anda):
      ```powershell
-     powershell -NoProfile -Command "$z=\"$env:TEMP\ka.zip\"; $e=\"$env:TEMP\ka_ext\"; Invoke-WebRequest 'https://github.com/anytimemusic/cursor-ai-agent-windows/archive/refs/heads/main.zip' -OutFile $z; Expand-Archive $z $e -Force; $s=\"$e\cursor-ai-agent-windows-main\"; Get-ChildItem $s -Recurse -File -Force | ForEach-Object { $r=$_.FullName.Substring($s.Length).TrimStart('\','/'); $t=Join-Path (Get-Location) $r; $d=Split-Path $t -Parent; if(!(Test-Path $d)){New-Item -ItemType Directory $d -Force|Out-Null}; Copy-Item $_.FullName $t -Force }; Remove-Item $z,$e -Recurse -Force"
+     if (Test-Path .\.venv\Scripts\python.exe) { .\.venv\Scripts\python.exe cli.py quit }
+     $z="$env:TEMP\ka.zip"; $e="$env:TEMP\ka_ext"; Remove-Item $z,$e -Recurse -Force -ErrorAction SilentlyContinue; Invoke-WebRequest 'https://github.com/anytimemusic/cursor-ai-agent-windows/archive/refs/heads/main.zip' -OutFile $z; Expand-Archive $z $e -Force; $s="$e\cursor-ai-agent-windows-main"; Get-ChildItem $s -Recurse -File -Force | ForEach-Object { $t=Join-Path (Get-Location) $_.FullName.Substring($s.Length).TrimStart('\','/'); $d=Split-Path $t -Parent; if(!(Test-Path $d)){New-Item -ItemType Directory $d -Force|Out-Null}; Copy-Item $_.FullName $t -Force }; Remove-Item $z,$e -Recurse -Force
      ```
   2. Konfigurasi API Key di `%APPDATA%\cursor-ai-agent\config.json` dan folder `.venv` tidak akan terhapus. Setelah itu jalankan `start.bat` (dan untuk update berikutnya cukup double-click `update.bat`).
 
